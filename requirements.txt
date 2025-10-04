@@ -3,3 +3,4 @@ pandas
 easyocr
 torch
 Pillow
+plotly
