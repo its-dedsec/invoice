@@ -1,74 +1,58 @@
+# app.py
 import streamlit as st
-import cv2
-import numpy as np
-from PIL import Image
-import easyocr
 import pandas as pd
 
-st.set_page_config(page_title="Invoice OCR", layout="wide")
-st.title("🧾 Invoice OCR & Analysis")
+st.set_page_config(page_title="D-Mart", page_icon="🧾", layout="wide")
 
-# Initialize EasyOCR
-reader = easyocr.Reader(['en'])
+st.title("🧾 D-Mart Invoice Checker")
+st.write("Upload your invoice CSV to search, clean, and verify items easily.")
 
-# ---------- Image Preprocessing ----------
-def preprocess_image(image):
-    img = np.array(image.convert("RGB"))
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Thresholding
-    _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-    # Denoising
-    cleaned = cv2.medianBlur(thresh, 3)
-    return cleaned
-
-# ---------- OCR Extraction ----------
-def extract_text(image):
-    results = reader.readtext(image, detail=0, paragraph=True)
-    return results
-
-# ---------- Parsing ----------
-def parse_invoice(lines):
-    items = []
-    skip_keywords = ["TOTAL", "ITEMS", "GST", "CASHIER", "BILL", "TAX", "AMOUNT"]
-
-    for line in lines:
-        if any(word in line.upper() for word in skip_keywords):
-            continue
-
-        parts = line.split()
-        if len(parts) >= 4:
-            try:
-                qty, rate, value = map(float, parts[-3:])
-                item = " ".join(parts[:-3])
-                items.append([item, qty, rate, value])
-            except ValueError:
-                continue
-    return items
-
-# ---------- Streamlit App ----------
-uploaded_file = st.file_uploader("Upload Invoice Image", type=["png", "jpg", "jpeg"])
+# Step 1: Upload CSV
+uploaded_file = st.file_uploader("📂 Upload Invoice CSV", type=["csv"])
 
 if uploaded_file:
-    image = Image.open(uploaded_file)
+    df = pd.read_csv(uploaded_file)
+    st.success("✅ File uploaded successfully!")
 
-    # Create tabs
-    tab1, tab2 = st.tabs(["🧹 Preprocessing", "🔎 OCR & Parsing"])
+    # Step 2: Data cleaning
+    with st.expander("🧹 Data Cleaning & Preprocessing", expanded=False):
+        st.write("Select cleaning options below:")
+        if st.checkbox("Remove duplicates"):
+            df = df.drop_duplicates()
+        if st.checkbox("Trim spaces in column names and data"):
+            df.columns = df.columns.str.strip()
+            df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
+        if st.checkbox("Fill missing values with 0"):
+            df = df.fillna(0)
+        st.dataframe(df)
 
-    with tab1:
-        st.subheader("Original Invoice")
-        st.image(image, caption="Uploaded Invoice", use_container_width=True)
+    # Step 3: Verification Tab
+    st.subheader("🧩 Verify and Tick Items")
 
-        st.subheader("Cleaned Invoice")
-        cleaned_img = preprocess_image(image)
-        st.image(cleaned_img, caption="Preprocessed for OCR", use_container_width=True, channels="GRAY")
+    search_query = st.text_input("🔍 Search item name:")
+    filtered_df = df[df["Particulars"].str.contains(search_query, case=False, na=False)] if search_query else df
 
-    with tab2:
-        st.subheader("Extracted Data")
-        results = extract_text(cleaned_img)
-        items = parse_invoice(results)
+    filtered_df["Verified"] = False
+    verified = []
+    for i, row in filtered_df.iterrows():
+        col1, col2, col3, col4, col5 = st.columns([3,1,1,1,1])
+        with col1:
+            st.text(row["Particulars"])
+        with col2:
+            st.text(row["Qty"])
+        with col3:
+            st.text(row["Rate"])
+        with col4:
+            st.text(row["Value"])
+        with col5:
+            tick = st.checkbox("✔", key=i)
+            if tick:
+                verified.append(i)
+                filtered_df.loc[i, "Verified"] = True
 
-        if items:
-            df = pd.DataFrame(items, columns=["Item", "Qty", "Rate", "Value"])
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.warning("Could not parse structured data from invoice.")
+    # Step 4: Download Updated CSV
+    st.subheader("💾 Download Updated Invoice")
+    csv_data = filtered_df.to_csv(index=False).encode("utf-8")
+    st.download_button("Download Updated CSV", csv_data, "verified_invoice.csv", "text/csv")
+else:
+    st.info("👆 Upload a CSV file to get started.")
