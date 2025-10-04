@@ -25,18 +25,29 @@ if uploaded_file is not None:
     remaining_items = total_items - len(st.session_state.verified_items)
 
     # Header metrics
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("📊 Total Items", total_items)
     with col2:
         st.metric("🕒 Remaining Items", remaining_items)
+    with col3:
+        if st.button("📋 Show Remaining Items"):
+            st.session_state.show_remaining = True
+    if "show_remaining" not in st.session_state:
+        st.session_state.show_remaining = False
 
     # Search bar
     search_query = st.text_input("🔍 Search by Particular Name").strip().lower()
+
+    # Apply filtering based on user choice
+    filtered_df = df.copy()
+
     if search_query:
-        filtered_df = df[df['particulars'].str.lower().str.contains(search_query, na=False)]
-    else:
-        filtered_df = df.copy()
+        filtered_df = filtered_df[filtered_df['particulars'].str.lower().str.contains(search_query, na=False)]
+
+    if st.session_state.show_remaining:
+        filtered_df = filtered_df[~filtered_df.index.isin(st.session_state.verified_items)]
+        st.info("📋 Showing only unverified items")
 
     st.write("### 🛒 Items List")
 
@@ -48,7 +59,6 @@ if uploaded_file is not None:
 
         verified = i in st.session_state.verified_items
 
-        # Item card layout
         with st.container():
             cols = st.columns([3, 1])
             cols[0].markdown(f"""
@@ -77,5 +87,13 @@ if uploaded_file is not None:
             file_name='verified_invoice.csv',
             mime='text/csv'
         )
+
+    # Reset verification
+    if st.button("🔄 Reset Verification"):
+        st.session_state.verified_items.clear()
+        st.session_state.show_remaining = False
+        st.success("Verification list reset!")
+        st.rerun()
+
 else:
     st.info("Please upload your invoice CSV to begin.")
